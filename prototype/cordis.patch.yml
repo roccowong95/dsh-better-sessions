@@ -1,0 +1,3 @@
+- insert:
+    - id: better-sessions
+      name: '@local/dsh-better-sessions'

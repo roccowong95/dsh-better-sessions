@@ -1,0 +1,407 @@
+/* dsh-better-sessions —— 侧边栏浏览区域样式
+ *
+ * 纪律：只用 --dsw-* 语义令牌，禁止字面颜色/阴影色（没有阴影令牌，
+ * 所以"浮起"感用 interactive-bg-* 令牌的底色差来表达）。
+ * 行高/圆角/间距对齐原生 ui-workspace：session 行 32px、folder 行 34px、圆角 8px。
+ */
+
+.dbs-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+
+/* ── Tab 行：左侧三个 Tab，右侧两个图标操作 ───────────────────────── */
+.dbs-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 6px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.dbs-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  padding: 6px 10px;
+  border-radius: 6px 6px 0 0;
+}
+
+.dbs-tab:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dbs-tab[aria-selected="true"] {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: inset 0 -2px 0 var(--dsw-alias-brand-primary);
+}
+
+.dbs-tabSpacer {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── 图标按钮：统一热区，Tab 行与浮动按钮复用 ─────────────────────── */
+.dbs-iconBtn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  flex: none;
+  padding: 0;
+}
+
+.dbs-iconBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dbs-iconBtn:active {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.dbs-iconBtn[aria-pressed="true"] {
+  color: var(--dsw-alias-brand-primary);
+}
+
+/* ── 列表主体 ─────────────────────────────────────────────────────── */
+.dbs-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 4px 34px; /* 底部留白给浮动诊断按钮 */
+  scrollbar-gutter: stable;
+}
+
+.dbs-group {
+  margin: 2px 0 8px;
+}
+
+/* ── 段头：13px/500，与 session 同号但更重 + 大写 ─────────────────── */
+.dbs-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 4px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.dbs-headToggle {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 4px;
+  border-radius: 5px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.dbs-headToggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dbs-headLabel {
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--dsw-alias-label-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 含当前会话的段头用 business 色 —— 对齐原生 folderActive */
+.dbs-head[data-contains-current="true"] .dbs-headLabel {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.dbs-headCount {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.8;
+}
+
+.dbs-fold {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  padding: 2px;
+  margin: -2px;
+  line-height: 0;
+  flex: none;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dbs-fold:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dbs-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* ── 会话行 ───────────────────────────────────────────────────────── */
+.dbs-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 4px 0 8px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dbs-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dbs-row:active {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.dbs-row[data-current="true"] {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  box-shadow: inset 2px 0 0 var(--dsw-alias-brand-primary);
+}
+
+.dbs-row[data-current="true"]:hover {
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+
+/* 归档行走 caption 色（对齐原生），不用 opacity + 删除线 */
+.dbs-row[data-archived="true"] .dbs-title {
+  color: var(--dsw-alias-label-caption);
+}
+
+.dbs-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dbs-open {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 2px 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+}
+
+.dbs-open:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: -2px;
+}
+
+.dbs-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dbs-dot[data-kind="running"] {
+  background: var(--dsw-alias-state-warn-primary);
+}
+
+.dbs-dot[data-kind="done"] {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.dbs-pin {
+  display: flex;
+  align-items: center;
+  flex: none;
+  color: var(--dsw-alias-brand-primary);
+}
+
+.dbs-menuWrap {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+/* 汉堡按钮：26×26 矩形热区，默认隐藏，hover/focus 才浮现 */
+.dbs-menuBtn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  padding: 0;
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.dbs-row:hover .dbs-menuBtn,
+.dbs-row:focus-within .dbs-menuBtn,
+.dbs-menuBtn:focus-visible,
+.dbs-menuBtn[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.dbs-menuBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dbs-head .dbs-menuBtn {
+  opacity: 1;
+}
+
+/* ── 菜单 ─────────────────────────────────────────────────────────── */
+.dbs-menu {
+  position: absolute;
+  right: 0;
+  top: 26px;
+  z-index: 20;
+  min-width: 168px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.dbs-menuItem {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  padding: 6px 8px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dbs-menuItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dbs-menuItem svg {
+  flex: none;
+  opacity: 0.8;
+}
+
+.dbs-menuSep {
+  height: 1px;
+  margin: 3px 2px;
+  background: var(--dsw-alias-border-l1);
+}
+
+.dbs-menuLabel {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dsw-alias-label-secondary);
+  padding: 4px 8px 2px;
+}
+
+.dbs-empty {
+  padding: 16px 10px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+}
+
+/* ── 诊断 ─────────────────────────────────────────────────────────── */
+.dbs-diag {
+  margin: 8px 8px 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 区域右下角浮动小按钮，不占布局 */
+.dbs-fab {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 15;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l1);
+}
+
+.dbs-fab:hover {
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.dbs-fab[aria-pressed="true"] {
+  color: var(--dsw-alias-brand-primary);
+}

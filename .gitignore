@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+
+# 构建产物（安装前需 `npm run build`，见 README）
+lib/
+.work/
+dist/
+
+# 测试/缓存
+coverage/
+*.log
+.DS_Store
+
+# 本地
+.env
+.env.*
