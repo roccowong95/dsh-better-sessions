@@ -13,6 +13,11 @@ export const zh = {
   'tab.groups': '分组',
   'tab.flat': '平铺',
 
+  'search.label': '搜索会话标题',
+  'search.clear': '清空搜索',
+  'search.placeholder': '搜索会话标题…',
+  'search.noResults': '没有匹配的会话',
+
   'group.ungrouped': '未分组',
   'group.new': '新建分组',
   'group.rename': '重命名分组',
@@ -22,10 +27,17 @@ export const zh = {
   'group.defaultName': '新分组',
 
   'action.newProject': '新建项目',
+  'action.cancel': '取消',
+  'action.save': '保存',
+  'action.expand': '展开',
+  'action.collapse': '折叠',
+  'arch.runningConfirm': '此会话正在运行。停止运行并归档吗？',
 
   'move.toGroup': '移动到分组',
   'move.out': '移出分组',
 
+  'menu.moveUp': '上移',
+  'menu.moveDown': '下移',
   'menu.rename': '重命名',
   'menu.fork': 'Fork',
   'menu.archive': '归档',
@@ -37,6 +49,13 @@ export const zh = {
 
   'row.newSession': '新会话',
   'row.pinned': '已置顶',
+
+  'time.now': '刚刚',
+  'time.minutes': '{n}分钟',
+  'time.hours': '{n}小时',
+  'time.days': '{n}天',
+  'time.months': '{n}个月',
+  'time.years': '{n}年',
 
   'arch.label': '显示已归档会话',
   'arch.hide': '隐藏已归档会话',
@@ -62,6 +81,11 @@ export const en: Record<keyof typeof zh, string> = {
   'tab.groups': 'Groups',
   'tab.flat': 'Flat',
 
+  'search.label': 'Search session titles',
+  'search.clear': 'Clear search',
+  'search.placeholder': 'Search session titles…',
+  'search.noResults': 'No matching sessions',
+
   'group.ungrouped': 'Ungrouped',
   'group.new': 'New group',
   'group.rename': 'Rename group',
@@ -71,10 +95,17 @@ export const en: Record<keyof typeof zh, string> = {
   'group.defaultName': 'New group',
 
   'action.newProject': 'New project',
+  'action.cancel': 'Cancel',
+  'action.save': 'Save',
+  'action.expand': 'Expand',
+  'action.collapse': 'Collapse',
+  'arch.runningConfirm': 'This session is running. Stop its activity and archive it?',
 
   'move.toGroup': 'Move to group',
   'move.out': 'Remove from group',
 
+  'menu.moveUp': 'Move up',
+  'menu.moveDown': 'Move down',
   'menu.rename': 'Rename',
   'menu.fork': 'Fork',
   'menu.archive': 'Archive',
@@ -86,6 +117,13 @@ export const en: Record<keyof typeof zh, string> = {
 
   'row.newSession': 'New Session',
   'row.pinned': 'Pinned',
+
+  'time.now': 'now',
+  'time.minutes': '{n}min',
+  'time.hours': '{n}h',
+  'time.days': '{n}d',
+  'time.months': '{n}mo',
+  'time.years': '{n}y',
 
   'arch.label': 'Show archived sessions',
   'arch.hide': 'Hide archived sessions',

@@ -7,7 +7,20 @@
  * 运行：`npm test`（vitest）
  */
 
-import { test } from 'vitest'
+import { test, vi } from 'vitest'
+
+// Browser rendering supplies the injected store hooks; no Host store runtime is needed.
+vi.mock('@deepseek-ai/dsh-client-store', () => ({ defineStore: vi.fn() }))
+// Official UI modules are supplied by the Host loader, not this Node renderer.
+vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({ Modal: 'sdk-modal', Input: 'sdk-input', Button: 'sdk-button', relativeTime: () => ({ unit: 'now', n: 0 }) }))
+import { createElement } from 'react'
+import { createRequire } from 'node:module'
+
+// The plugin ships React DOM but does not require its type package for production.
+const { renderToStaticMarkup } = createRequire(import.meta.url)('react-dom/server') as {
+  renderToStaticMarkup: (element: ReturnType<typeof createElement>) => string
+}
+import { Browser, type BrowserInjected, type BrowserProps } from './components/Browser'
 import assert from 'node:assert/strict'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
@@ -20,6 +33,19 @@ import {
 
 /** SessionId 是 branded 类型；测试里用字面量，统一走这个收敛。 */
 const sid = (id: string): SessionId => id as SessionId
+
+test('named blank drafts and shown archived blank drafts remain reachable', () => {
+  const map = byIdOf(s('named', { blank: true, title: 'Test' }), s('archived', { blank: true }), s('unnamed', { blank: true }))
+  assert.deepEqual(vo(['named', 'archived', 'unnamed'], map, undefined, [], ['archived'], 'default'), ['named'])
+  assert.deepEqual(vo(['named', 'archived', 'unnamed'], map, undefined, [], ['archived'], 'show'), ['named', 'archived'])
+})
+
+test('subagent origins stay hidden in every archive mode while ordinary forks remain', () => {
+  const map = byIdOf(s('main'), s('fork', { parentId: 'main' }), s('worker', { origin: 'subagent', parentId: 'main' }))
+  assert.deepEqual(vo(['main', 'fork', 'worker'], map, undefined, ['worker'], [], 'default'), ['main', 'fork'])
+  assert.deepEqual(vo(['main', 'fork', 'worker'], map, 'worker', ['worker'], ['worker'], 'show'), ['main', 'fork'])
+  assert.deepEqual(vo(['main', 'fork', 'worker'], map, undefined, [], ['fork', 'worker'], 'only'), ['fork'])
+})
 
 /* 测试专用签名放宽：纯逻辑只把 id 当不透明串，这里统一放宽成 string，
  * 免得 191 处 `as`。生产代码仍是 branded SessionId。 */
@@ -358,14 +384,14 @@ test('reconcileManualOrder: 不修改入参', () => {
 test('visibleOrder: pinned 领先其段', () => {
   const byId = byIdOf(s('a', { updatedAt: 1 }), s('b', { updatedAt: 2 }), s('p', { updatedAt: 0 }))
   // 'p' 最旧，但 pinned → 排最前
-  assert.deepStrictEqual(vo(['a', 'b', 'p'], byId, undefined, ['p'], []), ['p', 'b', 'a'])
-  // 多个 pinned 内部仍按 recency
+  assert.deepStrictEqual(vo(['a', 'b', 'p'], byId, undefined, ['p'], []), ['p', 'a', 'b'])
+  // 多个 pinned 内部保留调用方顺序
   const byId2 = byIdOf(
     s('a', { updatedAt: 1 }),
     s('p1', { updatedAt: 4 }),
     s('p2', { updatedAt: 7 })
   )
-  assert.deepStrictEqual(vo(['a', 'p1', 'p2'], byId2, undefined, ['p1', 'p2'], []), ['p2', 'p1', 'a'])
+  assert.deepStrictEqual(vo(['a', 'p1', 'p2'], byId2, undefined, ['p1', 'p2'], []), ['p1', 'p2', 'a'])
 })
 
 test('visibleOrder: blank 会话只有 current 那个可见', () => {
@@ -387,13 +413,13 @@ test("visibleOrder: filter='default' 丢弃归档、'show' 保留、'only' 只�
   const archived = ['arch']
 
   assert.deepStrictEqual(vo(ids, byId, undefined, [], archived, 'default'), ['live'])
-  assert.deepStrictEqual(vo(ids, byId, undefined, [], archived, 'show'), ['arch', 'live'])
+  assert.deepStrictEqual(vo(ids, byId, undefined, [], archived, 'show'), ['live', 'arch'])
   assert.deepStrictEqual(vo(ids, byId, undefined, [], archived, 'only'), ['arch'])
 
   // 未传 filter → 按 'default'
   assert.deepStrictEqual(vo(ids, byId, undefined, [], archived), ['live'])
 
-  // 'show' 下归档行不享受特殊搬移：按通用 recency 落位（arch 更新更近所以在前面）
+  // 'show' 下归档行不享受特殊搬移：保留调用方给定的位置
   const byId2 = byIdOf(s('live', { updatedAt: 9 }), s('arch', { updatedAt: 5 }))
   assert.deepStrictEqual(vo(['live', 'arch'], byId2, undefined, [], archived, 'show'), ['live', 'arch'])
 })
@@ -407,7 +433,7 @@ test('visibleOrder: pinned / archived 传数组或 Set 都能工作（归一化�
   assert.deepStrictEqual(withSets, ['p', 'b'])
 
   // 完全不传也不能抛错
-  assert.deepStrictEqual(vo(['a', 'b'], byId, undefined), ['b', 'a'])
+  assert.deepStrictEqual(vo(['a', 'b'], byId, undefined), ['a', 'b'])
 })
 
 test('visibleOrder: 丢弃没有 summary 的 id', () => {
@@ -421,6 +447,87 @@ test('visibleOrder: 不修改入参', () => {
   const byId = byIdOf(s('a', { updatedAt: 1 }), s('b', { updatedAt: 2 }), s('p', { updatedAt: 0 }))
   vo(ids, byId, undefined, ['p'], [])
   assert.deepStrictEqual(ids, ['a', 'b', 'p'])
+})
+
+test('Browser: workspace labels and reactive row-state snapshot drive project rendering', () => {
+  const list = {
+    ids: ['old', 'pin', 'arch', 'blank', 'worker'],
+    byId: byIdOf(
+      s('old', { updatedAt: 1 }), s('pin', { updatedAt: 100 }),
+      s('arch', { updatedAt: 200 }),
+      s('blank', { blank: true, retainedBy: { mainView: 1 } }),
+      s('worker', { origin: 'subagent', title: 'Hidden worker', updatedAt: 300 }),
+    ),
+  }
+  const groupState = { groups: [], membership: {}, orderByGroup: {}, collapsed: {} }
+  const workspace = { workspaceId: 'project', title: 'Real Project', path: '/projects/fallback', sessionIds: list.ids }
+  const render = (pinned: string[], archived: string[], title = workspace.title, path = workspace.path) => {
+    const workspaceState = { items: [{ ...workspace, title, path }], pinnedSessionIds: pinned, archivedSessionIds: archived }
+    const props = {
+      wide: true, t: (key: string) => key,
+      useSessions: (selector: (state: typeof list) => unknown) => selector(list),
+      useWorkspaces: (selector: (state: typeof workspaceState) => unknown) => selector(workspaceState),
+      useStore: (selector: (state: typeof groupState) => unknown) => selector(groupState),
+      actions: {}, services: 'test',
+    } as unknown as BrowserInjected & BrowserProps
+    return renderToStaticMarkup(createElement(Browser, props))
+  }
+  const initial = render(['pin'], ['arch'])
+  assert.ok(initial.includes('Real Project'))
+  assert.ok(!initial.includes('Hidden worker'))
+  assert.ok(initial.includes('class="dbs-head-count">· 3</span>'))
+  assert.ok(!initial.includes('data-archived="true"'))
+  assert.ok(initial.includes('dbs-pin'))
+  assert.ok(initial.indexOf('title="blank"') < initial.indexOf('title="pin"'))
+  assert.ok(initial.indexOf('title="pin"') < initial.indexOf('title="old"'))
+  // A changed Host snapshot must change the rendered pin/archive state.
+  const changed = render([], [], '', 'C:\\projects\\Fallback Project\\')
+  assert.ok(changed.includes('Fallback Project'))
+  assert.ok(!changed.includes('Hidden worker'))
+  assert.ok(changed.includes('class="dbs-head-count">· 4</span>'))
+  assert.ok(changed.includes('title="arch"'))
+  assert.ok(!changed.includes('class="dbs-pin"'))
+  assert.ok(changed.indexOf('title="old"') < changed.indexOf('title="pin"'))
+})
+
+/* Browser pipeline regressions: reconcile/order first, visibility last. */
+
+test('pipeline: saved manual positions and new fork adjacency survive visibility', () => {
+  const byId = byIdOf(
+    s('old', { updatedAt: 1 }), s('recent', { updatedAt: 100 }),
+    s('fork', { updatedAt: 0, parentId: 'old' }),
+    s('archive', { updatedAt: 200 }),
+  )
+  const members = ['recent', 'old', 'archive', 'fork']
+  const saved = ['old', 'archive', 'recent']
+  const reconciled = rmo(members, saved, byId)
+  assert.deepStrictEqual(vo(reconciled, byId, undefined, [], ['archive']), ['fork', 'old', 'recent'])
+  assert.deepStrictEqual(vo(reconciled, byId, undefined, [], ['archive'], 'show'), ['fork', 'old', 'archive', 'recent'])
+  assert.deepStrictEqual(saved, ['old', 'archive', 'recent'])
+})
+
+test('pipeline: stable pin partition preserves relative manual order in both partitions', () => {
+  const byId = byIdOf(s('a'), s('b'), s('c'), s('d'))
+  const order = rmo(['a', 'b', 'c', 'd'], ['d', 'c', 'b', 'a'], byId)
+  assert.deepStrictEqual(vo(order, byId, undefined, ['a', 'c']), ['c', 'a', 'd', 'b'])
+})
+
+test('pipeline: selected blank leads pinned rows regardless of recency and appears once', () => {
+  const byId = byIdOf(
+    s('pin', { updatedAt: 100 }), s('blank', { updatedAt: 0, blank: true }),
+    s('otherBlank', { updatedAt: 200, blank: true }), s('live', { updatedAt: 50 }),
+  )
+  const reconciled = rmo(['pin', 'blank', 'otherBlank', 'live'], ['pin', 'live', 'blank'], byId)
+  assert.deepStrictEqual(vo(reconciled, byId, 'blank', ['pin']), ['blank', 'pin', 'live'])
+  assert.deepStrictEqual(vo(['pin', 'blank', 'blank'], byId, 'blank', ['pin']), ['blank', 'pin'])
+  assert.deepStrictEqual(vo(reconciled, byId, 'live', ['pin']), ['pin', 'live'])
+})
+
+test('pipeline: flat recency order remains explicit and archive-only filtering keeps slots', () => {
+  const byId = byIdOf(s('old', { updatedAt: 1 }), s('new', { updatedAt: 10 }), s('middle', { updatedAt: 5 }))
+  const ordered = obr(['old', 'middle', 'new'], byId)
+  assert.deepStrictEqual(vo(ordered, byId, undefined, ['old'], ['middle'], 'show'), ['old', 'new', 'middle'])
+  assert.deepStrictEqual(vo(ordered, byId, undefined, ['old'], ['middle', 'new'], 'only'), ['new', 'middle'])
 })
 
 /* ------------------------------------------------------------------ *

@@ -6,12 +6,14 @@
  */
 import { rolldown } from 'rolldown'
 import { readFileSync } from 'node:fs'
+import { replaceCssText } from './css-text.mjs'
 
 /** baseline 隐式外部依赖：由宿主模块表运行期提供，不能打进 bundle。 */
 const BASELINE = [
   'react',
   'react/jsx-runtime',
   'react-dom',
+  'react-dom/client',
   '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-store',
   '@deepseek-ai/dsh-client-ui-slots',
@@ -30,14 +32,13 @@ const BASELINE = [
 /** 把 `__DBS_CSS_TEXT__` 占位符替换成 CSS 文本的字符串字面量。 */
 function injectCssText() {
   const css = readFileSync('src/css/browser.css', 'utf8')
-  const literal = JSON.stringify(css).slice(1, -1) // 去掉首尾引号，代码里已有引号
   return {
     name: 'dsh-inject-css-text',
     transform: {
       filter: /\.(ts|tsx|mts|js|mjs)$/,
       handler(code) {
         if (!code.includes('__DBS_CSS_TEXT__')) return null
-        return { code: code.replaceAll('__DBS_CSS_TEXT__', literal), map: null }
+        return { code: replaceCssText(code, css), map: null }
       },
     },
   }

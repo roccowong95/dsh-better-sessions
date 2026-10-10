@@ -46,13 +46,6 @@ export interface GroupsState {
   collapsed: Record<string, boolean>
 }
 
-const EMPTY: GroupsState = {
-  groups: [],
-  membership: {},
-  orderByGroup: {},
-  collapsed: {},
-}
-
 /** 取色板里第一个未被占用的颜色；全占用则按组数轮转。 */
 export function nextColor(groups: readonly SessionGroup[]): GroupColor {
   const used = new Set(groups.map((g) => g.color))
@@ -64,8 +57,8 @@ export type GroupsActions = {
   renameGroup: (draft: GroupsState, id: string, title: string) => void
   cycleGroupColor: (draft: GroupsState, id: string) => void
   dissolveGroup: (draft: GroupsState, id: string) => void
-  /** groupId 为 null 表示移出到未分组。 */
-  moveSessionTo: (draft: GroupsState, sessionId: SessionId, groupId: string | null) => void
+  /** groupId 为 null 表示移出到未分组；destinationOrder 是过滤可见行之前的完整目标段序。 */
+  moveSessionTo: (draft: GroupsState, sessionId: SessionId, groupId: string | null, destinationOrder: readonly SessionId[]) => void
   setSectionOrder: (draft: GroupsState, key: string, ids: readonly SessionId[]) => void
   toggleCollapsed: (draft: GroupsState, key: string) => void
 }
@@ -73,10 +66,10 @@ export type GroupsActions = {
 export function createGroupsStore() {
   return defineStore<GroupsState, GroupsActions>({
     persist: 'dsh-better-sessions:groups',
-    init: () => EMPTY,
+    init: () => ({ groups: [], membership: {}, orderByGroup: {}, collapsed: {} }),
     actions: {
       createGroup(draft) {
-        const id = `g_${Math.random().toString(36).slice(2, 10)}`
+        const id = `g_${crypto.randomUUID()}`
         draft.groups.push({
           id,
           title: null,
@@ -105,18 +98,24 @@ export function createGroupsStore() {
           if (key === id) delete draft.collapsed[key]
         }
       },
-      moveSessionTo(draft, sessionId, groupId) {
+      moveSessionTo(draft, sessionId, groupId, destinationOrder) {
+        // Ignore stale menu destinations rather than creating orphan membership.
+        if (groupId !== null && !draft.groups.some((group) => group.id === groupId)) return
+        // Selecting the current section is not a reorder (including ungrouped).
+        if ((liveGroupId(draft, sessionId) ?? null) === groupId) return
         if (groupId === null) delete draft.membership[sessionId]
         else draft.membership[sessionId] = groupId
-        // 从所有段的序里摘掉，再追加到目标段末尾
+        // Remove old positions, then append after all reconciled destination members,
+        // not just its saved subset. Hidden members keep their underlying positions.
         for (const key of Object.keys(draft.orderByGroup)) {
           draft.orderByGroup[key] = (draft.orderByGroup[key] ?? []).filter((x) => x !== sessionId)
         }
         const key = groupId === null ? '' : groupId
-        draft.orderByGroup[key] = [...(draft.orderByGroup[key] ?? []), sessionId]
+        draft.orderByGroup[key] = [...new Set(destinationOrder.filter((id) =>
+          id !== sessionId && (liveGroupId(draft, id) ?? '') === key)), sessionId]
       },
       setSectionOrder(draft, key, ids) {
-        draft.orderByGroup[key] = [...ids]
+        draft.orderByGroup[key] = [...new Set(ids)]
       },
       toggleCollapsed(draft, key) {
         draft.collapsed[key] = !draft.collapsed[key]

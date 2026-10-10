@@ -9,10 +9,8 @@
  * （运行时不可 import，JSDoc 即权威规格），加上我们自己的排序规则。
  *
  * 纯函数：不读全局、不抛异常、不修改入参、不 import 任何东西。
- * 由 `order.test.ts` 覆盖（与 prototype/lib/order.test.js 同一批用例）。
- *
- * 注意：本文件的函数体由 `scripts/port-order.mjs` 从已验证的 JS 原样搬入，
- * 签名类型单独维护——改逻辑请改 JS 后重新生成，或两边同步改并跑测试。
+ * 由 `order.test.ts` 覆盖；最初从 prototype/lib/order.js 搬入。
+ * 当前仓库没有 port-order 生成器，生产构建直接使用本文件。
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -22,7 +20,10 @@ export interface OrderableSummary {
   readonly id: SessionId
   readonly updatedAt: number
   readonly blank: boolean
+  readonly title?: string
   readonly parentId?: SessionId
+  /** Durable navigation classification; ordinary forks have parentId but no subagent origin. */
+  readonly origin?: 'subagent'
 }
 
 export type SessionMap = Readonly<Record<SessionId, OrderableSummary>>
@@ -522,7 +523,8 @@ function pinCurrentBlank(order: readonly SessionId[], currentBlank?: SessionId |
  *    - `'default'`：丢弃 `archived` 里的（默认隐藏归档）；
  *    - `'show'`：全部保留（归档行不参与特殊搬移，只按下面的通用排序落位、置灰）；
  *    - `'only'`：只保留 `archived` 里的；
- * 4. 排序：**pinned 领先**，其余按 `updatedAt` 降序，相等用 id 字典序兜底。
+ * 4. 稳定分区：**pinned 领先**，每个分区保留传入的 recency / reconciled manual 序。
+ * 5. 选中的 blank 置于 pinned 之前，且不占重复位。
  *
  * `pinned` / `archived` 接受 `Set<SessionId>` 或数组（内部用 `new Set(x)` 归一化）。
  * `current` 是 `SessionId | undefined`。
@@ -547,7 +549,8 @@ function pinCurrentBlank(order: readonly SessionId[], currentBlank?: SessionId |
  *    - `'default'`：丢弃 `archived` 里的（默认隐藏归档）；
  *    - `'show'`：全部保留（归档行不参与特殊搬移，只按下面的通用排序落位、置灰）；
  *    - `'only'`：只保留 `archived` 里的；
- * 4. 排序：**pinned 领先**，其余按 `updatedAt` 降序，相等用 id 字典序兜底。
+ * 4. 稳定分区：**pinned 领先**，每个分区保留传入的 recency / reconciled manual 序。
+ * 5. 选中的 blank 置于 pinned 之前，且不占重复位。
  *
  * `pinned` / `archived` 接受 `Set<SessionId>` 或数组（内部用 `new Set(x)` 归一化）。
  * `current` 是 `SessionId | undefined`。
@@ -569,8 +572,9 @@ function visibleOrder(ids: readonly SessionId[], byId: SessionMap, current: Sess
 
   const kept = source.filter((id) => {
     const summary = map[id]
-    if (!summary) return false // 1) 无 summary
-    if (summary.blank && id !== current) return false // 2) 只有选中的 blank 可见
+    if (!summary || summary.origin === 'subagent') return false // 与官方导航过滤一致
+    // Named drafts and archived drafts must remain reachable for rename/unarchive.
+    if (summary.blank && id !== current && !summary.title?.trim() && !(mode !== 'default' && archivedSet.has(id))) return false
 
     const isArchived = archivedSet.has(id)
     if (mode === 'default' && isArchived) return false // 3a) 默认隐藏归档
@@ -578,14 +582,11 @@ function visibleOrder(ids: readonly SessionId[], byId: SessionMap, current: Sess
     return true // 3b) 'show' 全部保留
   })
 
-  kept.sort((a, b) => {
-    const pa = pinnedSet.has(a) ? 0 : 1
-    const pb = pinnedSet.has(b) ? 0 : 1
-    if (pa !== pb) return pa - pb
-    return compareRecencyThenId(map, a, b)
-  })
-
-  return kept
+  // Visibility must not re-sort the caller's recency/reconciled manual order.
+  // Stable pin partition preserves saved positions and ordinary fork adjacency.
+  const ordered = kept.filter((id) => pinnedSet.has(id))
+    .concat(kept.filter((id) => !pinnedSet.has(id)))
+  return pinCurrentBlank(ordered, current && map[current]?.blank ? current : undefined)
 }
 /**
  * 当前在主视图展示的会话 id（对齐原生 `mainSessionId`）。

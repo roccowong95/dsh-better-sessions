@@ -11,9 +11,35 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--dsw-alias-bg-base);
+  min-width: 0;
+  background: transparent;
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
+}
+
+/* Keep the host's native grid resize handle and pointer capture. Only widen
+ * its centered hit area when this browser occupies that frame. */
+div:has(> [data-side="sidebar"]):has(.dbs-root) > [data-side="sidebar"] {
+  width: 12px;
+  margin-left: -6px;
+  cursor: col-resize;
+  -webkit-app-region: no-drag;
+}
+
+div:has(> [data-side="sidebar"]):has(.dbs-root) > [data-side="sidebar"]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 2px;
+  background: transparent;
+  pointer-events: none;
+}
+
+div:has(> [data-side="sidebar"]):has(.dbs-root) > [data-side="sidebar"]:hover::after,
+div:has(> [data-side="sidebar"]):has(.dbs-root) > [data-side="sidebar"]:active::after {
+  background: var(--dsw-alias-brand-primary);
 }
 
 /* ── Tab 行：左侧三个 Tab，右侧两个图标操作 ───────────────────────── */
@@ -84,13 +110,54 @@
   color: var(--dsw-alias-brand-primary);
 }
 
+/* ── 标题搜索：只在展开侧边栏中显示 ───────────────────────────────── */
+.dbs-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 4px;
+}
+
+.dbs-search-input {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}
+
+/* The search control already supplies a custom clear button. */
+.dbs-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  display: none;
+}
+
+.dbs-search-input::placeholder {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dbs-search-input:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: -2px;
+}
+
 /* ── 列表主体 ─────────────────────────────────────────────────────── */
 .dbs-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: auto; /* Geometry prevents horizontal overflow; do not clip menus. */
   padding: 4px 4px 34px; /* 底部留白给浮动诊断按钮 */
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
 }
 
 .dbs-group {
@@ -106,7 +173,7 @@
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
-.dbs-headToggle {
+.dbs-head-toggle {
   appearance: none;
   border: 0;
   background: transparent;
@@ -123,11 +190,11 @@
   text-align: left;
 }
 
-.dbs-headToggle:hover {
+.dbs-head-toggle:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.dbs-headLabel {
+.dbs-head-label {
   font-size: 13px;
   font-weight: 500;
   text-transform: uppercase;
@@ -140,11 +207,11 @@
 }
 
 /* 含当前会话的段头用 business 色 —— 对齐原生 folderActive */
-.dbs-head[data-contains-current="true"] .dbs-headLabel {
+.dbs-head[data-contains-current="true"] .dbs-head-label {
   color: var(--dsw-alias-state-business-primary);
 }
 
-.dbs-headCount {
+.dbs-head-count {
   flex: none;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
@@ -180,9 +247,11 @@
 
 /* ── 会话行 ───────────────────────────────────────────────────────── */
 .dbs-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  box-sizing: border-box;
+  min-width: 0;
   width: 100%;
   text-align: left;
   font-size: 13px;
@@ -190,7 +259,7 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-  padding: 0 4px 0 8px;
+  padding: 0;
   height: 32px;
   border-radius: 8px;
   color: var(--dsw-alias-label-primary);
@@ -206,7 +275,6 @@
 
 .dbs-row[data-current="true"] {
   background: var(--dsw-alias-interactive-bg-hover-solid);
-  box-shadow: inset 2px 0 0 var(--dsw-alias-brand-primary);
 }
 
 .dbs-row[data-current="true"]:hover {
@@ -214,16 +282,8 @@
 }
 
 /* 归档行走 caption 色（对齐原生），不用 opacity + 删除线 */
-.dbs-row[data-archived="true"] .dbs-title {
+.dbs-row[data-archived="true"] .dbs-open {
   color: var(--dsw-alias-label-caption);
-}
-
-.dbs-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .dbs-open {
@@ -234,13 +294,82 @@
   color: inherit;
   font: inherit;
   text-align: left;
-  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0 8px; /* Symmetric official row gutters; time owns the trailing seat. */
+  min-width: 0;
+  border-radius: inherit;
+}
+
+.dbs-open-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-radius: 4px;
+}
+
+/* Three 26px buttons + two 2px gaps + 4px title gap + 8px edge. */
+.dbs-row-actions {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none; /* Empty space above/below buttons remains the open target. */
+  opacity: 0;
+}
+
+.dbs-row-actions .dbs-menu-btn,
+.dbs-row-actions .dbs-row-action {
+  pointer-events: none;
+}
+
+.dbs-row-time {
+  flex: none;
+  max-width: 82px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Mouse focus must not latch actions after pointer leave. Keyboard focus and an
+ * actually open menu are legitimate persistent access paths. No opacity fade. */
+.dbs-row:hover .dbs-row-actions,
+.dbs-row:has(:focus-visible) .dbs-row-actions,
+.dbs-row[data-menu-open="true"] .dbs-row-actions {
+  opacity: 1;
+}
+
+.dbs-row:hover .dbs-row-actions .dbs-menu-btn,
+.dbs-row:hover .dbs-row-actions .dbs-row-action,
+.dbs-row:has(:focus-visible) .dbs-row-actions .dbs-menu-btn,
+.dbs-row:has(:focus-visible) .dbs-row-actions .dbs-row-action,
+.dbs-row[data-menu-open="true"] .dbs-row-actions .dbs-menu-btn,
+.dbs-row[data-menu-open="true"] .dbs-row-actions .dbs-row-action,
+.dbs-row-actions .dbs-menu {
+  pointer-events: auto;
+}
+
+.dbs-row:hover .dbs-row-time,
+.dbs-row:has(:focus-visible) .dbs-row-time,
+.dbs-row[data-menu-open="true"] .dbs-row-time {
+  display: none;
+}
+
+.dbs-row:hover .dbs-open,
+.dbs-row:has(:focus-visible) .dbs-open,
+.dbs-row[data-menu-open="true"] .dbs-open {
+  padding-right: 94px;
 }
 
 .dbs-open:focus-visible {
@@ -270,7 +399,7 @@
   color: var(--dsw-alias-brand-primary);
 }
 
-.dbs-menuWrap {
+.dbs-menu-wrap {
   position: relative;
   flex: none;
   display: flex;
@@ -278,7 +407,8 @@
 }
 
 /* 汉堡按钮：26×26 矩形热区，默认隐藏，hover/focus 才浮现 */
-.dbs-menuBtn {
+.dbs-menu-btn,
+.dbs-row-action {
   appearance: none;
   border: 0;
   background: transparent;
@@ -292,24 +422,24 @@
   color: var(--dsw-alias-label-secondary);
   padding: 0;
   flex: none;
-  opacity: 0;
-  transition: opacity 0.12s ease;
 }
 
-.dbs-row:hover .dbs-menuBtn,
-.dbs-row:focus-within .dbs-menuBtn,
-.dbs-menuBtn:focus-visible,
-.dbs-menuBtn[aria-expanded="true"] {
-  opacity: 1;
-}
-
-.dbs-menuBtn:hover {
+.dbs-menu-btn:hover,
+.dbs-row-action:hover {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
 
-.dbs-head .dbs-menuBtn {
-  opacity: 1;
+.dbs-menu-btn:focus-visible,
+.dbs-row-action:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: -2px;
+}
+
+.dbs-row-action:disabled,
+.dbs-menu-item:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-caption);
 }
 
 /* ── 菜单 ─────────────────────────────────────────────────────────── */
@@ -326,10 +456,9 @@
   border-radius: 8px;
   background: var(--dsw-alias-bg-overlay);
   border: 1px solid var(--dsw-alias-border-l2);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
-.dbs-menuItem {
+.dbs-menu-item {
   appearance: none;
   border: 0;
   background: transparent;
@@ -344,22 +473,22 @@
   gap: 8px;
 }
 
-.dbs-menuItem:hover {
+.dbs-menu-item:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.dbs-menuItem svg {
+.dbs-menu-item svg {
   flex: none;
   opacity: 0.8;
 }
 
-.dbs-menuSep {
+.dbs-menu-sep {
   height: 1px;
   margin: 3px 2px;
   background: var(--dsw-alias-border-l1);
 }
 
-.dbs-menuLabel {
+.dbs-menu-label {
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -405,3 +534,5 @@
 .dbs-fab[aria-pressed="true"] {
   color: var(--dsw-alias-brand-primary);
 }
+
+/* Session dialogs use the official Modal/Input/Button styles without overrides. */

@@ -1,35 +1,42 @@
-/**
- * 图标：优先用 `ui-primitives` 官方图标（`color rides currentColor`），
- * 取不到时退回一个文本字符——绝不因为图标缺失而白屏。
- *
- * `ui-primitives` 是 AGENTS.md 点名允许的"窄静态属主"，共享控件只能来自它。
- */
-
+/** Lightweight decorative SVGs: no dependency on optional primitive icon exports. */
 import { createElement as h } from 'react'
-import * as Prim from '@deepseek-ai/dsh-client-ui-primitives'
 
 type Glyph = (size: number) => React.ReactNode
 
-/** 渲染一个官方图标；模块表里取不到就退回文本字符。 */
-function ico(name: string, size: number, fallback: string): React.ReactNode {
-  const C = (Prim as unknown as Record<string, unknown>)[name]
-  if (typeof C === 'function') return h(C as React.ComponentType<{ size?: number }>, { size })
-  return h('span', { 'aria-hidden': true }, fallback)
+/** Buttons provide accessible labels; their icons inherit the surrounding theme color. */
+function ico(size: number, ...paths: readonly string[]): React.ReactNode {
+  return h('svg', {
+    xmlns: 'http://www.w3.org/2000/svg',
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true,
+    focusable: false,
+  }, paths.map((d, key) => h('path', { key, d })))
 }
 
 export const Icons: Record<
   'foldDown' | 'foldRight' | 'more' | 'plus' | 'archive' | 'unarchive' | 'pin' | 'unpin' | 'gear' | 'edit' | 'branch',
   Glyph
 > = {
-  foldDown: (s) => ico('IconChevronDownOutlineMedium', s, '\u25be'),
-  foldRight: (s) => ico('IconChevronRightOutlineMedium', s, '\u25b8'),
-  more: (s) => ico('IconEllipsisOutlineMedium', s, '\u00b7\u00b7\u00b7'),
-  plus: (s) => ico('IconPlusOutlineMedium', s, '+'),
-  archive: (s) => ico('IconArchiveOutlineMedium', s, '\u2338'),
-  unarchive: (s) => ico('IconUnarchiveOutlineMedium', s, '\u2339'),
-  pin: (s) => ico('IconPinFillMedium', s, '\u25a0'),
-  unpin: (s) => ico('IconPinOutlineMedium', s, '\u25a1'),
-  gear: (s) => ico('IconSettingsOutlineMedium', s, '\u2699'),
-  edit: (s) => ico('IconEditOutlineMedium', s, '\u270e'),
-  branch: (s) => ico('IconBranchOutlineMedium', s, '\u2442'),
+  foldDown: (s) => ico(s, 'm6 9 6 6 6-6'),
+  foldRight: (s) => ico(s, 'm9 6 6 6-6 6'),
+  more: (s) => ico(s, 'M5 12h.01M12 12h.01M19 12h.01'),
+  plus: (s) => ico(s, 'M12 5v14M5 12h14'),
+  archive: (s) => ico(s, 'M4 4h16v4H4zM5 8v12h14V8', 'M9 12h6'),
+  unarchive: (s) => ico(s, 'M4 4h16v4H4zM5 8v12h14V8', 'M12 17v-6m-3 3 3-3 3 3'),
+  pin: (s) => ico(s, 'M9 3h6l-1 6 4 4v2H6v-2l4-4z', 'M12 15v6'),
+  unpin: (s) => ico(s, 'M9 3h6l-1 6 4 4v2H6v-2l4-4z', 'M12 15v6M3 3l18 18'),
+  gear: (s) => ico(s,
+    'm10 3-.5 3-2 .9L5 6l-2 3 2.5 1.8v2.4L3 15l2 3 2.5-.9 2 .9.5 3h4l.5-3 2-.9 2.5.9 2-3-2.5-1.8v-2.4L21 9l-2-3-2.5.9-2-.9L14 3z',
+    'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'),
+  edit: (s) => ico(s, 'm15 4 5 5M4 20l1-6L16 3l5 5L10 19z'),
+  branch: (s) => ico(s,
+    'M6 7v10M6 12h6a6 6 0 0 0 6-6',
+    'M8 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0M8 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0M20 4a2 2 0 1 1-4 0 2 2 0 0 1 4 0'),
 }

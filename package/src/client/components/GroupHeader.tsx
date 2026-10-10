@@ -53,7 +53,7 @@ export function GroupHeader(props: GroupHeaderProps) {
       type: 'button',
       className: 'dbs-head-toggle',
       'aria-expanded': String(!collapsed),
-      title: collapsed ? 'expand' : 'collapse',
+      title: collapsed ? t('action.expand') : t('action.collapse'),
       onClick: foldable ? onToggle : undefined,
       style: foldable ? undefined : { cursor: 'default' },
     },
@@ -78,7 +78,7 @@ export function GroupHeader(props: GroupHeaderProps) {
             ? h('div', { className: 'dbs-menu', role: 'menu' },
                 h('button', {
                   type: 'button', role: 'menuitem', className: 'dbs-menu-item',
-                  onClick: () => { setMenuOpen(false); onRenameGroup(group.id) },
+                  onClick: () => { wrapRef.current?.querySelector<HTMLButtonElement>('.dbs-menu-btn')?.focus(); setMenuOpen(false); onRenameGroup(group.id) },
                 }, Icons.edit(14), t('group.rename')),
                 h('button', {
                   type: 'button', role: 'menuitem', className: 'dbs-menu-item',
@@ -87,7 +87,7 @@ export function GroupHeader(props: GroupHeaderProps) {
                 h('div', { className: 'dbs-menu-sep' }),
                 h('button', {
                   type: 'button', role: 'menuitem', className: 'dbs-menu-item',
-                  onClick: () => { setMenuOpen(false); onDissolveGroup(group.id) },
+                  onClick: () => { wrapRef.current?.querySelector<HTMLButtonElement>('.dbs-menu-btn')?.focus(); setMenuOpen(false); onDissolveGroup(group.id) },
                 }, Icons.archive(14), t('group.dissolve')),
               )
             : null)

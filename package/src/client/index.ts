@@ -17,6 +17,8 @@ import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { createGroupsStore } from './stores'
 import { NS, zh as zhDict, en as enDict } from './locales'
 import { Browser, type BrowserInjected } from './components/Browser'
+import { createSessionDialogs } from './session-dialog'
+import { nextAfterParent } from './fork-position'
 
 export { createGroupsStore } from './stores'
 export type { GroupsState, SessionGroup, GroupColor } from './stores'
@@ -49,6 +51,36 @@ export function apply(ctx: Context): void {
     return () => { el.remove() }
   }, 'better-sessions: styles')
 
+  const dialogs = createSessionDialogs()
+  ctx.effect(() => () => dialogs.dispose(), 'better-sessions: session dialogs')
+  const t = ctx.locale.bind(NS)
+  const common = ctx.locale.bind('common')
+  let disposed = false
+  let notice: HTMLElement | undefined
+  ctx.effect(() => () => {
+    disposed = true
+    notice?.remove()
+    notice = undefined
+  }, 'better-sessions: error notice')
+  const failed = (op: string) => (cause: unknown) => {
+    if (disposed) return
+    console.warn(`[better-sessions] ${op} failed`, cause)
+    notice?.remove()
+    const element = document.createElement('div')
+    element.setAttribute('role', 'alert')
+    element.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:10000;max-width:min(32rem,85vw);padding:12px;border-radius:8px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1)'
+    const message = document.createElement('span')
+    message.textContent = `${op}: ${cause instanceof Error ? cause.message : String(cause)}`
+    const dismiss = document.createElement('button')
+    dismiss.type = 'button'
+    dismiss.textContent = common('close')
+    dismiss.style.marginInlineStart = '12px'
+    dismiss.addEventListener('click', () => { element.remove(); if (notice === element) notice = undefined })
+    element.append(message, dismiss)
+    document.body.appendChild(element)
+    notice = element
+  }
+
   /* ③ inject 工厂：只返普通数据 + 回调，响应式事实走框架 hook */
   const injected = (): BrowserInjected => ({
     services: [
@@ -58,21 +90,55 @@ export function apply(ctx: Context): void {
       `workspaces=${typeof ctx.workspaces}`,
     ].join(' '),
     open: (id) => ctx.uiWorkspace.openSession(id),
-    fork: (id) => { void ctx.uiWorkspace.forkSession(id).catch(failed('fork')) },
-    rename: (id, title) => {
-      const next = window.prompt(zhDict['prompt.renameSession'], title)
-      if (next == null) return
-      const b = ctx.sessions.binding(id)
-      if (b) void b.session.rename(next).catch(failed('rename'))
+    fork: (id) => {
+      void (async () => {
+        const child = await ctx.uiWorkspace.forkSession(id)
+        if (disposed) return
+        const workspace = ctx.workspaces.list.getSnapshot().items.find((item) => item.sessionIds.includes(id))
+        if (workspace) {
+          const next = nextAfterParent(workspace.sessionIds, id, child)
+          await ctx.workspaces.insertSessionBefore(workspace.workspaceId, child, next)
+        }
+      })().catch(failed('fork'))
     },
-    archive: (id) => { void ctx.uiWorkspace.archiveSession(id).catch(failed('archive')) },
+    rename: (id, title) => {
+      dialogs.open({
+        title: t('prompt.renameSession'),
+        initialValue: title,
+        cancelLabel: common('cancel'),
+        saveLabel: common('save'),
+        submit: (next, signal) => ctx.sessions.using(id, { source: 'workspaceOperation', signal }, async (reference) => {
+          await reference.ready
+          if (signal.aborted) return
+          const result = await reference.binding.session.rename(next)
+          if (!result.ok) throw new Error(result.error.message)
+        }),
+      })
+    },
+    archive: (id) => {
+      const list = ctx.sessions.list.getSnapshot()
+      // Only catalog members have authoritative Host running state.
+      if (list.ids.includes(id) && list.byId[id]?.running) {
+        dialogs.open({
+          title: t('menu.archive'),
+          message: t('arch.runningConfirm'),
+          cancelLabel: common('cancel'),
+          saveLabel: t('menu.archive'),
+          submit: async (_value, signal) => {
+            if (!signal.aborted) await ctx.uiWorkspace.archiveSession(id, { stopActivity: true })
+          },
+        })
+        return
+      }
+      void ctx.uiWorkspace.archiveSession(id).catch(failed('archive'))
+    },
     unarchive: (id) => { void ctx.uiWorkspace.unarchiveSession(id).catch(failed('unarchive')) },
     pin: (id) => { void ctx.uiWorkspace.pinSession(id).catch(failed('pin')) },
     unpin: (id) => { void ctx.uiWorkspace.unpinSession(id).catch(failed('unpin')) },
     createProject: () => {
       void (async () => {
         const path = await ctx.uiWorkspace.pickDirectory()
-        if (!path) return
+        if (disposed || !path) return
         // IWorkspaces.create 直接返回 WorkspaceView，失败走 reject
         await ctx.workspaces.create({ path })
       })().catch(failed('createProject'))
@@ -87,10 +153,4 @@ export function apply(ctx: Context): void {
     inject: injected,
     locale: NS,
   }, Browser))
-}
-
-/* ── 内部工具 ─────────────────────────────────────────────────────── */
-
-function failed(op: string) {
-  return (e: unknown) => console.warn(`[better-sessions] ${op} failed`, e)
 }

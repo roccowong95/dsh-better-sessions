@@ -10,20 +10,23 @@
  *   ⑥ ctx.uiWorkspace 的 pin/unpin/archive/unarchive 全生效
  */
 
-import { createElement as h, useMemo, useState } from 'react'
+import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
+import { createSessionDialogs } from '../session-dialog'
+import { filterSessionTitles } from '../search'
+import { sectionOrdering, type SectionOrdering } from '../section-order'
+import { browserStorage, readBrowserTab, saveBrowserTab } from '../view-preferences'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type {
-  SessionListState,
-} from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { ComposedProps, InjectFace, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ComposedProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { Icons } from '../icons'
 import {
   mainSessionId,
+  orderByRecency,
   reconcileManualOrder,
   visibleOrder,
+  type SessionMap,
+  type RowStateLike,
 } from '../order'
-import { groupSections, liveGroupId, type GroupsStoreHandle } from '../stores'
+import { groupSections, liveGroupId, type GroupsState, type GroupsStoreHandle } from '../stores'
 import { GroupHeader } from './GroupHeader'
 import { SessionRow, type SessionRowActions } from './SessionRow'
 
@@ -61,33 +64,73 @@ const TABS: readonly (readonly [TabKey, string])[] = [
   ['flat', 'tab.flat'],
 ]
 
+/** Full destination order, before archive/search/blank visibility projection. */
+export function moveDestinationOrder(
+  gs: GroupsState, ids: readonly SessionId[], groupId: string | null,
+  byId: SessionMap, rowState: RowStateLike,
+): SessionId[] {
+  const section = groupSections(gs, ids).find((sec) => sec.key === (groupId ?? ''))
+  if (!section) return []
+  const ordered = reconcileManualOrder(section.ids, gs.orderByGroup[section.key], byId, rowState)
+  // Reconciliation temporarily omits unsaved members without summaries. Keep them
+  // in the persisted move order too, so summary arrival cannot put them after the move.
+  return [...new Set([...ordered, ...section.ids])]
+}
+
 export function Browser(props: BrowserInjected & BrowserProps) {
   const {
-    wide, t, useSessions, useWorkspaces, useStore, actions,
+    wide, expandSidebar, t, useSessions, useWorkspaces, useStore, actions,
     open, fork, rename, archive, unarchive, pin, unpin, createProject, services,
   } = props
 
-  const [tab, setTab] = useState<TabKey>('projects')
+  const dialogs = useRef<ReturnType<typeof createSessionDialogs> | null>(null)
+  useEffect(() => {
+    const handle = createSessionDialogs()
+    dialogs.current = handle
+    return () => { handle.dispose(); dialogs.current = null }
+  }, [])
+
+  const [tab, setTab] = useState<TabKey>(() => readBrowserTab(browserStorage()))
+  useEffect(() => { saveBrowserTab(browserStorage(), tab) }, [tab])
   const [showArchived, setShowArchived] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const searching = searchQuery.trim().length > 0
   const [diagOpen, setDiagOpen] = useState(false)
   /** 项目 Tab 的段折叠是纯视图偏好，放本地 state，不混进分组 store。 */
   const [projectFolded, setProjectFolded] = useState<ReadonlySet<string>>(() => new Set())
 
   const list = useSessions((state) => state)
-  const workspaces = useWorkspaces((state) => state.items)
+  const workspaceState = useWorkspaces((state) => state)
+  const workspaces = workspaceState.items
   const gs = useStore((state) => state)
 
   const byId = list.byId
   /** 0.1.7 起 SessionListState 没有 `current`；当前会话 = retainedBy.mainView > 0 的那个。 */
   const current = useMemo(() => mainSessionId(list), [list])
-  const pinned = useMemo(() => new Set<SessionId>(), [])
-  const archived = useMemo(() => new Set<SessionId>(), [])
+  // Pin/archive membership is registry-global WorkspaceSnapshot state, not SessionSummary.
+  const pinned = useMemo(() => new Set(workspaceState.pinnedSessionIds), [workspaceState.pinnedSessionIds])
+  const archived = useMemo(() => new Set(workspaceState.archivedSessionIds), [workspaceState.archivedSessionIds])
   const filter = showArchived ? 'show' : 'default'
 
-  const acts: SessionRowActions = { rename, fork, archive, unarchive, pin, unpin, moveTo: actions.moveSessionTo }
+  const acts: SessionRowActions = {
+    rename, fork, archive, unarchive, pin, unpin,
+    moveTo: (id, groupId) => actions.moveSessionTo(id, groupId,
+      moveDestinationOrder(gs, list.ids, groupId, byId, {
+        pinnedSessionIds: workspaceState.pinnedSessionIds,
+        archivedSessionIds: workspaceState.archivedSessionIds,
+      })),
+  }
 
-  const rows = (ids: readonly SessionId[], keyPrefix: string, withMove: boolean) =>
-    visibleOrder(ids, byId, current, pinned, archived, filter).flatMap((id) => {
+  // Search follows ordering and archive/blank visibility so manual positions survive.
+  const visibleIds = (ids: readonly SessionId[]) => filterSessionTitles(
+    visibleOrder(ids, byId, current, pinned, archived, filter), byId, searchQuery,
+  )
+  let resultCount = 0
+  const rows = (
+    ids: readonly SessionId[], keyPrefix: string, withMove: boolean,
+    orderingFor?: (id: SessionId) => SectionOrdering,
+  ) =>
+    ids.flatMap((id) => {
       const summary = byId[id]
       if (!summary) return []
       return [h(SessionRow, {
@@ -101,6 +144,7 @@ export function Browser(props: BrowserInjected & BrowserProps) {
         actions: acts,
         groups: withMove ? gs.groups : null,
         groupId: liveGroupId(gs, id),
+        ordering: orderingFor?.(id),
         t,
       })]
     })
@@ -110,10 +154,11 @@ export function Browser(props: BrowserInjected & BrowserProps) {
     const owned = new Set<SessionId>()
     const sections = workspaces.map((w) => {
       w.sessionIds.forEach((id) => owned.add(id))
-      return { key: String(w.workspaceId), ids: w.sessionIds as readonly SessionId[] }
+      const basename = w.path.split(/[\\/]/).filter(Boolean).pop() || w.path
+      return { key: String(w.workspaceId), label: w.title.trim() || basename, ids: w.sessionIds as readonly SessionId[] }
     })
     const loose = list.ids.filter((id) => !owned.has(id))
-    if (loose.length) sections.push({ key: '', ids: loose })
+    if (loose.length) sections.push({ key: '', label: t('group.ungrouped'), ids: loose })
     return sections
   }
 
@@ -129,17 +174,21 @@ export function Browser(props: BrowserInjected & BrowserProps) {
   const body =
     tab === 'projects'
       ? projectSections().map((sec) => {
-          const folded = projectFolded.has(sec.key)
-          const ordered = reconcileManualOrder(sec.ids, undefined, byId, {
+          const folded = !searching && projectFolded.has(sec.key)
+          const ordered = reconcileManualOrder(sec.ids, sec.key ? sec.ids : undefined, byId, {
             pinnedSessionIds: [...pinned],
             archivedSessionIds: [...archived],
           })
+          const matched = visibleIds(ordered)
+          resultCount += matched.length
+          if (searching && !matched.length) return null
           return h('div', { key: sec.key || '__u', className: 'dbs-group' },
             h(GroupHeader, {
               section: { key: sec.key, group: null, ids: sec.ids },
-              count: visibleOrder(ordered, byId, current, pinned, archived, filter).length,
+              label: sec.label,
+              count: matched.length,
               collapsed: folded,
-              foldable: true,
+              foldable: !searching,
               onToggle: () => toggleProjectFold(sec.key),
               containsCurrent: current !== undefined && sec.ids.includes(current),
               onRenameGroup: () => {},
@@ -147,43 +196,63 @@ export function Browser(props: BrowserInjected & BrowserProps) {
               onDissolveGroup: () => {},
               t,
             }),
-            folded ? null : rows(ordered, `p${sec.key}`, false),
+            folded ? null : rows(matched, `p${sec.key}`, false),
           )
         })
       : tab === 'groups'
         ? groupSections(gs, list.ids).map((sec) => {
-            const collapsed = !!gs.collapsed[sec.key]
+            const collapsed = !searching && !!gs.collapsed[sec.key]
             const ordered = reconcileManualOrder(sec.ids, gs.orderByGroup[sec.key], byId, {
               pinnedSessionIds: [...pinned],
               archivedSessionIds: [...archived],
             })
+            // Derive eligible slots before search; hidden rows and the forced-first
+            // provisional current blank keep their underlying manual positions.
+            const movableIds = new Set(visibleOrder(ordered, byId, current, pinned, archived, filter)
+              .filter((id) => !(id === current && byId[id]?.blank)))
+            const orderingFor = (id: SessionId) => sectionOrdering(
+              ordered, movableIds, pinned, id, searching,
+              (next) => actions.setSectionOrder(sec.key, next),
+            )
+            const matched = visibleIds(ordered)
+            resultCount += matched.length
+            if (searching && !matched.length) return null
             return h('div', { key: sec.key || '__u', className: 'dbs-group' },
               h(GroupHeader, {
                 section: sec,
-                count: visibleOrder(ordered, byId, current, pinned, archived, filter).length,
+                count: matched.length,
                 collapsed,
-                foldable: true,
+                foldable: !searching,
                 onToggle: () => actions.toggleCollapsed(sec.key),
                 containsCurrent: current !== undefined && ordered.includes(current),
                 onRenameGroup: (id) => {
                   const g = gs.groups.find((x) => x.id === id)
-                  const next = window.prompt(t('prompt.renameGroup'), g?.title ?? t('group.defaultName'))
-                  if (next != null && next.trim()) actions.renameGroup(id, next.trim())
+                  dialogs.current?.open({
+                    title: t('prompt.renameGroup'), initialValue: g?.title ?? t('group.defaultName'),
+                    cancelLabel: t('action.cancel'), saveLabel: t('action.save'),
+                    submit: async (value) => { actions.renameGroup(id, value) },
+                  })
                 },
                 onColorGroup: actions.cycleGroupColor,
                 onDissolveGroup: (id) => {
                   const g = gs.groups.find((x) => x.id === id)
                   const name = g?.title ?? t('group.defaultName')
-                  if (window.confirm(t('group.dissolveConfirm').replace('{name}', name))) {
-                    actions.dissolveGroup(id)
-                  }
+                  dialogs.current?.open({
+                    title: t('group.dissolve'), message: t('group.dissolveConfirm').replace('{name}', name),
+                    cancelLabel: t('action.cancel'), saveLabel: t('group.dissolve'),
+                    submit: async () => { actions.dissolveGroup(id) },
+                  })
                 },
                 t,
               }),
-              collapsed ? null : rows(ordered, `g${sec.key}`, true),
+              collapsed ? null : rows(matched, `g${sec.key}`, true, orderingFor),
             )
           })
-        : h('div', { className: 'dbs-group' }, rows(list.ids, 'flat', true))
+        : (() => {
+            const matched = visibleIds(orderByRecency(list.ids, byId))
+            resultCount = matched.length
+            return h('div', { className: 'dbs-group' }, rows(matched, 'flat', true))
+          })()
 
   const diag = [
     `wide = ${JSON.stringify(wide)}`,
@@ -193,6 +262,14 @@ export function Browser(props: BrowserInjected & BrowserProps) {
     `groups = ${gs.groups.length} / membership = ${Object.keys(gs.membership).length}`,
     `services = ${services}`,
   ].join('\n')
+
+  if (!wide) return h('div', { className: 'dbs-root' },
+    h('button', {
+      type: 'button', className: 'dbs-iconBtn',
+      'aria-label': t('tab.projects'), title: t('tab.projects'),
+      onClick: expandSidebar,
+    }, Icons.foldRight(16)),
+  )
 
   return h('div', { className: 'dbs-root' },
     h('div', { className: 'dbs-tabs', role: 'tablist' },
@@ -229,7 +306,29 @@ export function Browser(props: BrowserInjected & BrowserProps) {
         onClick: () => setShowArchived((v) => !v),
       }, showArchived ? Icons.unarchive(15) : Icons.archive(15)),
     ),
-    h('div', { className: 'dbs-body' }, body),
+    h('div', { className: 'dbs-search', role: 'search', 'aria-label': t('search.label') },
+      h('input', {
+        type: 'search', className: 'dbs-search-input', value: searchQuery,
+        'aria-label': t('search.label'), placeholder: t('search.placeholder'),
+        onChange: (event: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(event.currentTarget.value),
+        onKeyDownCapture: (event: React.KeyboardEvent<HTMLInputElement>) => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          setSearchQuery('')
+        },
+      }),
+      searchQuery ? h('button', {
+        type: 'button', className: 'dbs-iconBtn',
+        title: t('search.clear'), 'aria-label': t('search.clear'),
+        onClick: () => setSearchQuery(''),
+      }, '×') : null,
+    ),
+    h('div', { className: 'dbs-body' },
+      searching && resultCount === 0
+        ? h('div', { className: 'dbs-empty', role: 'status' }, t('search.noResults'))
+        : body,
+    ),
     h('button', {
       type: 'button', className: `${'dbs-iconBtn'} ${'dbs-fab'}`,
       title: t('diag.title'), 'aria-label': t('diag.title'),
